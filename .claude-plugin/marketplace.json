@@ -1,0 +1,12 @@
+{
+  "plugins": [
+    {
+      "name": "specflow",
+      "version": "1.10.0",
+      "description": "Spec-driven workflow for Claude Code and Copilot CLI",
+      "repository": "https://github.com/mkrlabs/specflow",
+      "categories": ["workflow", "spec", "planning"],
+      "source": { "type": "github", "repo": "mkrlabs/specflow" }
+    }
+  ]
+}
