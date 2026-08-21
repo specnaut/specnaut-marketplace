@@ -1,10 +1,10 @@
 {
   "plugins": [
     {
-      "name": "specflow",
-      "version": "1.11.1",
-      "description": "Spec-driven workflow for Claude Code and Copilot CLI",
-      "repository": "https://github.com/mkrlabs/specflow",
+      "name": "specnaut-plugin",
+      "version": "3.0.1",
+      "description": "Specnaut's auto-chained spec-driven workflow, slash commands, and sub-agents for Claude Code — the same content the binary scaffolds, available as a versioned plugin.",
+      "repository": "https://github.com/specnaut/specnaut-cli",
       "categories": [
         "workflow",
         "spec",
@@ -12,7 +12,7 @@
       ],
       "source": {
         "type": "github",
-        "repo": "mkrlabs/specflow"
+        "repo": "specnaut/specnaut-cli"
       }
     }
   ]
