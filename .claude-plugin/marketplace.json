@@ -2,7 +2,7 @@
   "plugins": [
     {
       "name": "specnaut-plugin",
-      "version": "3.0.1",
+      "version": "3.1.0",
       "description": "Specnaut's auto-chained spec-driven workflow, slash commands, and sub-agents for Claude Code — the same content the binary scaffolds, available as a versioned plugin.",
       "repository": "https://github.com/specnaut/specnaut-cli",
       "categories": [
