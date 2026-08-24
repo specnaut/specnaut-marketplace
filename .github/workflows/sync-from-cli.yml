@@ -1,0 +1,86 @@
+# Pull the latest specnaut-cli release into this catalog.
+#
+# The direction is deliberate. specnaut-cli — a PUBLIC repository — used to hold
+# a fine-grained PAT with write access here and bump the catalog at release
+# time. A repository publishing a release should not need write access to
+# everything that lists it, and the credential enabling that should not sit in a
+# public repo at all.
+#
+# specnaut-cli's Releases API needs no authentication, because the repository is
+# public. This workflow reads it and commits to ITSELF with the run's own
+# GITHUB_TOKEN, scoped here and expiring with the job. No secret is stored in
+# either repo.
+#
+# The cost is latency: a release lands here within the cron interval rather than
+# within seconds. `workflow_dispatch` covers the case where that matters.
+name: sync from specnaut-cli
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-from-cli
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump the catalog entry to the latest published release
+        run: |
+          set -euo pipefail
+          CATALOG=".claude-plugin/marketplace.json"
+          UPSTREAM="specnaut/specnaut-cli"
+          PLUGIN="specnaut-plugin"
+
+          [ -f "$CATALOG" ] || { echo "::error::$CATALOG not found"; exit 1; }
+
+          # No auth: the source repository is public.
+          tag="$(curl -fsSL "https://api.github.com/repos/$UPSTREAM/releases/latest" | jq -r '.tag_name')"
+          [ -n "$tag" ] && [ "$tag" != "null" ] || { echo "::error::could not read the latest release tag"; exit 1; }
+          version="${tag#v}"
+
+          # Assert the selector matches BEFORE relying on a clean diff. "Nothing
+          # to update" and "nothing matched" produce an identical clean tree,
+          # and only one of them is success — a name mismatch is what left this
+          # catalog fifteen versions behind while every run reported green.
+          matches="$(jq --arg n "$PLUGIN" '[.plugins[] | select(.name == $n)] | length' "$CATALOG")"
+          if [ "$matches" -ne 1 ]; then
+            echo "::error::expected exactly one plugin named '$PLUGIN' in $CATALOG, found $matches."
+            echo "  The catalog lists: $(jq -r '[.plugins[].name] | join(", ")' "$CATALOG")"
+            exit 1
+          fi
+
+          current="$(jq -r --arg n "$PLUGIN" '.plugins[] | select(.name == $n) | .version' "$CATALOG")"
+          echo "upstream: $version | catalog: $current"
+          if [ "$current" = "$version" ]; then
+            echo "already at $version — nothing to do"
+            exit 0
+          fi
+
+          jq --indent 2 --arg v "$version" --arg n "$PLUGIN" \
+            '(.plugins[] | select(.name == $n) | .version) = $v' "$CATALOG" > "$CATALOG.tmp"
+          mv "$CATALOG.tmp" "$CATALOG"
+
+          # Read the file back rather than trusting the write.
+          written="$(jq -r --arg n "$PLUGIN" '.plugins[] | select(.name == $n) | .version' "$CATALOG")"
+          [ "$written" = "$version" ] || { echo "::error::catalog still lists $written after the patch"; exit 1; }
+
+          if [ -z "$(git status --porcelain "$CATALOG")" ]; then
+            echo "catalog already matches $tag byte-for-byte — nothing to commit"
+            exit 0
+          fi
+
+          git config user.name "specnaut-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CATALOG"
+          git commit -m "chore: bump $PLUGIN to $version"
+          git push
+          echo "✓ catalog bumped to $version"
