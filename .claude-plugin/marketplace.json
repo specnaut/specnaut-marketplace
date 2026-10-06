@@ -18,7 +18,23 @@
         "source": "git-subdir",
         "url": "https://github.com/specnaut/specnaut-cli.git",
         "path": "plugin",
-        "ref": "v5.0.1"
+        "ref": "v5.1.0"
+      }
+    },
+    {
+      "name": "specnaut-cockpit",
+      "description": "A Claude Code mod: it runs a hooks module inside Claude Code with your permissions. Shows usage limits, context, cost and the Specnaut chain above the prompt, and refuses one call: the step that would start implement, review or merge past the quota threshold.",
+      "category": "productivity",
+      "tags": [
+        "usage",
+        "rate-limits",
+        "autopilot"
+      ],
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/specnaut/specnaut-cli.git",
+        "path": "mods/specnaut-cockpit",
+        "ref": "v5.1.0"
       }
     }
   ]
