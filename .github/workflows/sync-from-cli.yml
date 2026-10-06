@@ -36,7 +36,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      # Pinned: this job's token can repoint what every user installs. And the
+      # branch tip, not the trigger-time commit: a cron run queued behind a
+      # dispatch would otherwise push from a stale base and fail red.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
 
       - name: Copy the catalogs published at the latest specnaut-cli release
         env:
@@ -66,24 +71,41 @@ jobs:
 
           for f in $FILES; do
             src="packaging/marketplace/$f"
-            if ! gh api "repos/$UPSTREAM/contents/$src?ref=$tag" --jq '.content' > "$f.b64" 2>/dev/null; then
-              # Releases before the catalogs moved upstream do not carry them.
-              # Keep what is here rather than publishing nothing.
-              echo "::notice::$tag has no $src — keeping the current $f"
-              rm -f "$f.b64"
-              continue
-            fi
             mkdir -p "$(dirname "$f")"
-            base64 -d < "$f.b64" > "$f.tmp" && rm -f "$f.b64"
+            # Raw content: no base64 step to fail half-way. Only a 404 means "this
+            # tag predates the move"; a rate limit or a server error is a failure,
+            # never a reason to keep the current file and report green.
+            if ! gh api "repos/$UPSTREAM/contents/$src?ref=$tag" \
+                -H 'Accept: application/vnd.github.raw' > "$f.tmp" 2> "$f.err"; then
+              if grep -q "HTTP 404" "$f.err"; then
+                echo "::notice::$tag has no $src — keeping the current $f"
+                rm -f "$f.tmp" "$f.err"
+                continue
+              fi
+              echo "::error::could not read $src at $tag: $(head -1 "$f.err")"
+              exit 1
+            fi
+            rm -f "$f.err"
 
-            # Prove the copy is this release's before it replaces anything: valid
-            # JSON with the fields both installers require, and every entry
-            # pinned to this very tag. "Nothing changed" and "nothing matched"
-            # leave the same clean tree, and only one of them is success.
-            jq -e '.name and .owner.name and (.plugins | length > 0)' "$f.tmp" > /dev/null               || { echo "::error::$src at $tag lacks name, owner or plugins"; exit 1; }
-            stale="$(jq -r --arg t "$tag" '[.plugins[] | select(.source.ref != $t) | .name] | join(", ")' "$f.tmp")"
-            [ -z "$stale" ] || { echo "::error::$src at $tag pins $stale to another ref"; exit 1; }
+            # Prove the copy is this release's before it replaces anything.
+            jq -e '.name and .owner.name and (.plugins | length > 0)' "$f.tmp" > /dev/null \
+              || { echo "::error::$src at $tag lacks name, owner or plugins"; exit 1; }
             mv "$f.tmp" "$f"
+          done
+
+          # Then check what is ON DISK, copied or kept: every entry of both
+          # catalogs pinned to the latest release. This is what catches a kept
+          # catalog that no longer matches — after a rollback, the newer
+          # catalogs would otherwise stay pinned to a deleted tag while this run
+          # reported "nothing to do".
+          for f in $FILES; do
+            stale="$(jq -r --arg t "$tag" '[.plugins[] | select(.source.ref? != $t) | .name] | join(", ")' "$f")" \
+              || { echo "::error::$f is not a readable catalog"; exit 1; }
+            [ -z "$stale" ] || {
+              echo "::error::$f pins $stale to a ref other than $tag, the latest release."
+              echo "  If $tag was rolled back to, restore the catalogs that match it by hand."
+              exit 1
+            }
           done
 
           if [ -z "$(git status --porcelain -- $FILES)" ]; then
