@@ -1,4 +1,4 @@
-# Pull the latest specnaut-cli release into this catalog.
+# Publish the marketplace catalogs of the latest specnaut-cli release.
 #
 # The direction is deliberate. specnaut-cli — a PUBLIC repository — used to hold
 # a fine-grained PAT with write access here and bump the catalog at release
@@ -38,67 +38,62 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Bump the catalog entry to the latest published release
+      - name: Copy the catalogs published at the latest specnaut-cli release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          CATALOG=".claude-plugin/marketplace.json"
           UPSTREAM="specnaut/specnaut-cli"
-          PLUGIN="specnaut-plugin"
-
-          [ -f "$CATALOG" ] || { echo "::error::$CATALOG not found"; exit 1; }
+          # Each catalog lives in specnaut-cli beside the plugins it lists, and is
+          # copied here VERBATIM at the release tag. Two files, one per installer
+          # dialect: Claude Code reads .claude-plugin/ and needs `git-subdir`;
+          # Copilot CLI reads .github/plugin/ first and needs `github` + `path`.
+          #
+          # The previous version of this step patched a `version` field in a
+          # catalog written by hand here. That catalog had no `name`, no `owner`
+          # and a source in no dialect Claude Code accepts, so every release
+          # republished a catalog that installed nothing — and the version string,
+          # the only thing anything checked, was always right.
+          FILES=".claude-plugin/marketplace.json .github/plugin/marketplace.json"
 
           # Authenticated, and NOT because the source is private — it is public,
           # and an unauthenticated read of it works right up until it does not.
           # The anonymous API limit is 60/hr PER IP, and GitHub-hosted runners
-          # share egress addresses with every other job on the fleet, so this
-          # call fails on a neighbour's traffic. Observed: run 33792004169 died
-          # with `curl: (22) ... error: 403` on exactly that. The run-scoped
-          # token costs nothing, is not a stored secret, and moves the call onto
-          # the 1000/hr authenticated budget.
-          #
-          # `gh` rather than `curl -H`: the token then cannot be spelled into a
-          # header by hand, and a 4xx surfaces as a non-zero exit instead of a
-          # body that `jq` happily reads as `null`.
+          # share egress addresses with every other job on the fleet. The
+          # run-scoped token is not a stored secret.
           tag="$(gh api "repos/$UPSTREAM/releases/latest" --jq '.tag_name')"
           [ -n "$tag" ] && [ "$tag" != "null" ] || { echo "::error::could not read the latest release tag"; exit 1; }
-          version="${tag#v}"
 
-          # Assert the selector matches BEFORE relying on a clean diff. "Nothing
-          # to update" and "nothing matched" produce an identical clean tree,
-          # and only one of them is success — a name mismatch is what left this
-          # catalog fifteen versions behind while every run reported green.
-          matches="$(jq --arg n "$PLUGIN" '[.plugins[] | select(.name == $n)] | length' "$CATALOG")"
-          if [ "$matches" -ne 1 ]; then
-            echo "::error::expected exactly one plugin named '$PLUGIN' in $CATALOG, found $matches."
-            echo "  The catalog lists: $(jq -r '[.plugins[].name] | join(", ")' "$CATALOG")"
-            exit 1
-          fi
+          for f in $FILES; do
+            src="packaging/marketplace/$f"
+            if ! gh api "repos/$UPSTREAM/contents/$src?ref=$tag" --jq '.content' > "$f.b64" 2>/dev/null; then
+              # Releases before the catalogs moved upstream do not carry them.
+              # Keep what is here rather than publishing nothing.
+              echo "::notice::$tag has no $src — keeping the current $f"
+              rm -f "$f.b64"
+              continue
+            fi
+            mkdir -p "$(dirname "$f")"
+            base64 -d < "$f.b64" > "$f.tmp" && rm -f "$f.b64"
 
-          current="$(jq -r --arg n "$PLUGIN" '.plugins[] | select(.name == $n) | .version' "$CATALOG")"
-          echo "upstream: $version | catalog: $current"
-          if [ "$current" = "$version" ]; then
-            echo "already at $version — nothing to do"
-            exit 0
-          fi
+            # Prove the copy is this release's before it replaces anything: valid
+            # JSON with the fields both installers require, and every entry
+            # pinned to this very tag. "Nothing changed" and "nothing matched"
+            # leave the same clean tree, and only one of them is success.
+            jq -e '.name and .owner.name and (.plugins | length > 0)' "$f.tmp" > /dev/null               || { echo "::error::$src at $tag lacks name, owner or plugins"; exit 1; }
+            stale="$(jq -r --arg t "$tag" '[.plugins[] | select(.source.ref != $t) | .name] | join(", ")' "$f.tmp")"
+            [ -z "$stale" ] || { echo "::error::$src at $tag pins $stale to another ref"; exit 1; }
+            mv "$f.tmp" "$f"
+          done
 
-          jq --indent 2 --arg v "$version" --arg n "$PLUGIN" \
-            '(.plugins[] | select(.name == $n) | .version) = $v' "$CATALOG" > "$CATALOG.tmp"
-          mv "$CATALOG.tmp" "$CATALOG"
-
-          # Read the file back rather than trusting the write.
-          written="$(jq -r --arg n "$PLUGIN" '.plugins[] | select(.name == $n) | .version' "$CATALOG")"
-          [ "$written" = "$version" ] || { echo "::error::catalog still lists $written after the patch"; exit 1; }
-
-          if [ -z "$(git status --porcelain "$CATALOG")" ]; then
-            echo "catalog already matches $tag byte-for-byte — nothing to commit"
+          if [ -z "$(git status --porcelain -- $FILES)" ]; then
+            echo "catalogs already match $tag — nothing to do"
             exit 0
           fi
 
           git config user.name "specnaut-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$CATALOG"
-          git commit -m "chore: bump $PLUGIN to $version"
+          git add -- $FILES
+          git commit -m "chore: publish the catalogs of specnaut-cli $tag"
           git push
-          echo "✓ catalog bumped to $version"
+          echo "✓ catalogs published at $tag"

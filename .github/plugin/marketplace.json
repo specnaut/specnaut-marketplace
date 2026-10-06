@@ -15,8 +15,8 @@
         "planning"
       ],
       "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/specnaut/specnaut-cli.git",
+        "source": "github",
+        "repo": "specnaut/specnaut-cli",
         "path": "plugin",
         "ref": "v5.0.1"
       }

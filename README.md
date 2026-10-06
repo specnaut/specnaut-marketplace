@@ -1,42 +1,55 @@
 # specnaut-marketplace
 
-Curated marketplace catalog for the [Specnaut](https://github.com/specnaut/specnaut-cli) plugin.
-
-Specnaut is a spec-driven workflow with backlog, planning, review, and audit phases. This repository hosts the canonical `.claude-plugin/marketplace.json` catalog that powers two install paths from a single source of truth.
+Marketplace catalogs for [Specnaut](https://github.com/specnaut/specnaut-cli), a spec-driven
+workflow for coding agents: planning, implementation, review and delivery.
 
 ## Install for Claude Code
 
 ```text
-/plugin marketplace add specnaut/specnaut-cli-marketplace
-/plugin install specnaut@specnaut-marketplace
+/plugin marketplace add specnaut/specnaut-marketplace
+/plugin install specnaut-plugin@specnaut-marketplace
 ```
 
 ## Install for Copilot CLI
 
 ```text
-copilot plugin marketplace add specnaut/specnaut-cli-marketplace
-copilot plugin install specnaut@specnaut-marketplace
+copilot plugin marketplace add specnaut/specnaut-marketplace
+copilot plugin install specnaut-plugin@specnaut-marketplace
 ```
 
 ## What gets installed
 
-The Specnaut plugin ships:
+`specnaut-plugin` serves the same skills and sub-agents the `specnaut` binary scaffolds into a
+project, as a user-scope plugin: the `/specnaut` router (plan → tasks → implement → review →
+merge, plus the audit phases), `/board`, `/ship`, the review and expert agents, and a
+`SessionStart` bootstrap. See the [Specnaut README](https://github.com/specnaut/specnaut-cli#readme)
+for the full picture.
 
-- A unified `/specnaut` router skill with 19 phases (specify · clarify · plan · tasks · analyze · implement · review · merge · constitution · checklist · groom · tag-version · release-version · list-skills · audit-{security,performance,accessibility,architecture,dependencies}).
-- 15 sub-agents (code-reviewer, developer, devops-sre, product-owner, qa-tester, review-coordinator, security-auditor, specnaut-expert, test-reviewer, workflow-manager, ui-ux-designer, performance-auditor, a11y-auditor, architecture-auditor, dependency-auditor).
-- 7 cross-cutting skills (writing-plans, requesting-code-review, using-specnaut, subagent-driven-development, executing-plans, verification-before-completion, brainstorming).
-- A `/specnaut-auto` chain skill and a `/specnaut-review` alias.
+## How the catalogs are published
 
-See the [Specnaut README](https://github.com/specnaut/specnaut-cli#readme) for the full feature matrix and the [docs site](https://specnaut.makerlabs.dev) for narrative documentation.
+The catalogs are not written here. They live in specnaut-cli under `packaging/marketplace/`,
+beside the plugins they list, are validated by that repository's CI, and have every entry pinned
+to the release tag by its version bump. `.github/workflows/sync-from-cli.yml` copies them here,
+verbatim, from the latest release — hourly, and at once when a release dispatches it.
 
-## Versioning
+There are two files because the two installers read different dialects for "a subdirectory of a
+GitHub repository":
 
-The `version` field in `.claude-plugin/marketplace.json` is auto-bumped by Specnaut's release pipeline (`scripts/sync-to-marketplace.sh`, dispatched from `specnaut/specnaut-cli`'s `.github/workflows/release.yml`) on every `v*` tag push. PRs land here as `chore: bump specnaut to <NEXT>` from the `github-actions[bot]` identity.
+| File | Read by | Source shape |
+| --- | --- | --- |
+| `.claude-plugin/marketplace.json` | Claude Code | `git-subdir` with `url` and `path` |
+| `.github/plugin/marketplace.json` | Copilot CLI (checked first) | `github` with `repo` and `path` |
+
+Edit the catalogs in specnaut-cli, never here: a change made here is overwritten by the next
+release.
 
 ## Reporting issues
 
-File bugs and feature requests on the source repository: <https://github.com/specnaut/specnaut-cli/issues>. This marketplace repo is catalog-only — do not open product issues here.
+File bugs and feature requests on the source repository:
+<https://github.com/specnaut/specnaut-cli/issues>. This repository is catalog-only.
 
 ## License
 
-The catalog metadata in this repository is published under [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/). The Specnaut plugin itself is MIT-licensed; see [LICENSE](https://github.com/specnaut/specnaut-cli/blob/main/LICENSE) on the source repository.
+The catalog metadata in this repository is published under
+[CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/). Specnaut itself is MIT-licensed; see
+[LICENSE](https://github.com/specnaut/specnaut-cli/blob/main/LICENSE) on the source repository.
